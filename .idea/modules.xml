@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/TlmJeiBridge.iml" filepath="$PROJECT_DIR$/.idea/modules/TlmJeiBridge.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/TlmJeiBridge.main.iml" filepath="$PROJECT_DIR$/.idea/modules/TlmJeiBridge.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/TlmJeiBridge.test.iml" filepath="$PROJECT_DIR$/.idea/modules/TlmJeiBridge.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/com.tlmjei.TlmJeiBridge.main.iml" filepath="$PROJECT_DIR$/.idea/modules/com.tlmjei.TlmJeiBridge.main.iml" />
+    </modules>
+  </component>
+</project>

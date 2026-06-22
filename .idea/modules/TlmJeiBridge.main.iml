@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="JAVA_MODULE" version="4">
+  <component name="McpModuleSettings">
+    <option name="mappingFile" value="D:\Github\toi-et-moi\TlmJeiBridge\build\neoForm\neoFormJoined1.21.1-20240808.144430\steps\mergeMappings\output.jar" />
+    <option name="minecraftVersion" value="1.21.1" />
+    <option name="platformVersion" value="21.1.234" />
+    <option name="srgType" value="TSRG" />
+  </component>
+  <component name="NewModuleRootManager" inherit-compiler-output="true">
+    <exclude-output />
+    <content url="file://$MODULE_DIR$/../../build/generated/sources/annotationProcessor/java/main">
+      <sourceFolder url="file://$MODULE_DIR$/../../build/generated/sources/annotationProcessor/java/main" isTestSource="false" />
+    </content>
+    <content url="file://$MODULE_DIR$/../../src/main" />
+    <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="inheritedJdk" />
+  </component>
+</module>

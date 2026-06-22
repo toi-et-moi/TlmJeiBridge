@@ -4,22 +4,33 @@
 
 作者是咱，也就是威严な大小姐（toi-et-moi）和deepseek
 
+## 版本
+
+| Minecraft | 平台 | 分支 |
+|---|---|---|
+| 1.20.1 | Forge 47.4.0+ | `master` |
+| 1.21.1 | NeoForge 21.1+ | `1.21.1` |
+
 ## 依赖
 
-- Minecraft 1.20.1 + Forge 47.4.0+
-- JEI 15.20+
+- Minecraft + Forge / NeoForge（对应版本）
+- JEI（对应版本）
 - Touhou Little Maid（运行时，编译时不需要）
 
 ## 构建
 
-```bash
-# 先构建 TLM 并复制 jar 到 libs 目录
-cd ../TouhouLittleMaid-1.20
-./gradlew build
-cp build/libs/touhou_little_maid-*.jar ../TlmJeiBridge/libs/
+### 1.20.1 (master)
 
-# 然后构建本模组
-cd ../TlmJeiBridge
+```bash
+cd TlmJeiBridge
+./gradlew build
+```
+
+### 1.21.1 (1.21.1 分支)
+
+```bash
+# 需要 JDK 21 + Gradle 8.14+
+git checkout 1.21.1
 ./gradlew build
 ```
 

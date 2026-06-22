@@ -38,6 +38,9 @@ dependencies {
     runtimeOnly fg.deobf("mezz.jei:jei-1.20.1-forge:15.20.0.104")
 }
 
+// IntelliJ IDEA expects this task for Gradle sync
+tasks.register('idePostSync') {}
+
 jar {
     manifest {
         attributes([
