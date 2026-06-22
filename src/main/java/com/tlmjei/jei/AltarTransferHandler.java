@@ -1,8 +1,6 @@
 package com.tlmjei.jei;
 
-import com.tlmjei.network.CPacketAltarTransfer;
 import com.tlmjei.network.NetworkHandler;
-import mezz.jei.api.gui.ingredient.IRecipeSlotView;
 import mezz.jei.api.gui.ingredient.IRecipeSlotsView;
 import mezz.jei.api.recipe.RecipeType;
 import mezz.jei.api.recipe.transfer.IRecipeTransferError;
@@ -18,15 +16,9 @@ import java.util.Optional;
 
 public class AltarTransferHandler implements IRecipeTransferHandler<AbstractContainerMenu, Object> {
 
-    private final Class<? extends AbstractContainerMenu> containerClass;
-
-    public AltarTransferHandler(Class<? extends AbstractContainerMenu> containerClass) {
-        this.containerClass = containerClass;
-    }
-
     @Override
     public Class<? extends AbstractContainerMenu> getContainerClass() {
-        return containerClass;
+        return net.minecraft.world.inventory.InventoryMenu.class;
     }
 
     @Override
@@ -50,12 +42,16 @@ public class AltarTransferHandler implements IRecipeTransferHandler<AbstractCont
         }
 
         List<ItemStack> inputs = new ArrayList<>();
-        for (IRecipeSlotView slotView : recipeSlots.getSlotViews()) {
-            Optional<ItemStack> displayed = slotView.getDisplayedItemStack();
+        for (var slotView : recipeSlots.getSlotViews()) {
+            var displayed = slotView.getDisplayedItemStack();
             inputs.add(displayed.orElse(ItemStack.EMPTY).copy());
         }
 
-        NetworkHandler.CHANNEL.sendToServer(new CPacketAltarTransfer(inputs));
+        // Send from client to server via NeoForge payload networking
+        if (player.level().isClientSide) {
+            var packet = new NetworkHandler.CPacketAltarTransfer(inputs);
+            net.neoforged.neoforge.network.PacketDistributor.sendToServer(packet);
+        }
         return null;
     }
 }

@@ -1,11 +1,11 @@
-modLoader="javafml"
-loaderVersion="[47,)"
+modLoader="neoforge"
+loaderVersion="[21,)"
 license="MIT"
 issueTrackerUrl=""
 
 [[mods]]
 modId="tlmjei"
-version="1.0.0"
+version="2.0.0"
 displayName="TLM JEI Bridge"
 credits="Toi_et_moi"
 authors="Toi_et_moi,Deepseek"
@@ -14,16 +14,16 @@ One-click transfer altar recipes from JEI to the Touhou Little Maid altar.
 '''
 
 [[dependencies.tlmjei]]
-modId="forge"
+modId="neoforge"
 mandatory=true
-versionRange="[47,)"
+versionRange="[21,)"
 ordering="NONE"
 side="BOTH"
 
 [[dependencies.tlmjei]]
 modId="jei"
 mandatory=true
-versionRange="[15,)"
+versionRange="[19,)"
 ordering="NONE"
 side="CLIENT"
 

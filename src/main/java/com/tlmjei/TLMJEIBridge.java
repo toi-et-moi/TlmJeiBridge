@@ -2,22 +2,24 @@ package com.tlmjei;
 
 import com.tlmjei.config.TlmJeiConfig;
 import com.tlmjei.network.NetworkHandler;
-import net.minecraftforge.fml.ModLoadingContext;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.config.ModConfig;
-import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.ModList;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.bus.api.IEventBus;
 
 @Mod(TLMJEIBridge.MODID)
 public class TLMJEIBridge {
     public static final String MODID = "tlmjei";
 
-    public TLMJEIBridge() {
-        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, TlmJeiConfig.spec());
+    public TLMJEIBridge(IEventBus modBus) {
+        // Register config
+        ModList.get().getModContainerById(MODID).ifPresent(mc ->
+                mc.registerConfig(ModConfig.Type.COMMON, TlmJeiConfig.spec()));
 
-        var bus = FMLJavaModLoadingContext.get().getModEventBus();
-        bus.addListener(this::commonSetup);
-        bus.register(TlmJeiConfig.class);
+        modBus.addListener(this::commonSetup);
+        modBus.register(TlmJeiConfig.class);
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {

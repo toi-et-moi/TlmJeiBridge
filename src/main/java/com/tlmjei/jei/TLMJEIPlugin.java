@@ -7,17 +7,12 @@ import mezz.jei.api.recipe.RecipeType;
 import mezz.jei.api.registration.IRecipeTransferRegistration;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.inventory.InventoryMenu;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 
 @JeiPlugin
 public class TLMJEIPlugin implements IModPlugin {
-    private static final Logger LOGGER = LoggerFactory.getLogger(TLMJEIBridge.MODID);
-
-    @SuppressWarnings("deprecation")
-    private static final ResourceLocation UID = new ResourceLocation(TLMJEIBridge.MODID, "main");
+    private static final ResourceLocation UID = ResourceLocation.parse(TLMJEIBridge.MODID + ":main");
 
     static final RecipeType<Object> ALTAR_TYPE = resolveAltarRecipeType();
 
@@ -29,7 +24,7 @@ public class TLMJEIPlugin implements IModPlugin {
     @Override
     public void registerRecipeTransferHandlers(IRecipeTransferRegistration registration) {
         registration.addRecipeTransferHandler(
-                new AltarTransferHandler(InventoryMenu.class), ALTAR_TYPE);
+                new AltarTransferHandler(), ALTAR_TYPE);
     }
 
     @SuppressWarnings("unchecked")
