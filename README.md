@@ -1,6 +1,7 @@
 # 帕秋莉的祭坛助手 — TLM JEI Bridge
 
 一键合成车万女仆祭坛配方。One-click transfer altar recipes from JEI to the Touhou Little Maid altar.
+作者是咱，也就是威严な大小姐（toi-et-moi）和deepseek
 
 ## 依赖
 
