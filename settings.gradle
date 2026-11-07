@@ -2,16 +2,12 @@ pluginManagement {
     repositories {
         mavenLocal()
         gradlePluginPortal()
+        // Official CDN mirror of maven.neoforged.net. The primary domain is unreachable
+        // from some networks (DNS resolves to unrelated IPs), which breaks the build.
         maven {
-            url = 'https://maven.neoforged.net/releases'
-            // Allow HTTP fallback for SSL issues
-            allowInsecureProtocol = false
+            url = 'https://neoforged.forgecdn.net/releases'
         }
     }
-}
-
-plugins {
-    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
 }
 
 rootProject.name = 'TlmJeiBridge'

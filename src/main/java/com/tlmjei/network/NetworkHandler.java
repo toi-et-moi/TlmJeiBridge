@@ -20,6 +20,10 @@ import java.util.List;
 @EventBusSubscriber(bus = EventBusSubscriber.Bus.MOD)
 public class NetworkHandler {
 
+    /** Safety caps so a malformed packet cannot allocate huge lists. */
+    private static final int MAX_SLOTS = 16;
+    private static final int MAX_CANDIDATES_PER_SLOT = 128;
+
     public static void register() {
         // Registration is done via the event handler below
     }
@@ -39,7 +43,12 @@ public class NetworkHandler {
         });
     }
 
-    public record CPacketAltarTransfer(List<ItemStack> inputs) implements CustomPacketPayload {
+    /**
+     * Payload for the JEI "+" button. Every element of {@code inputs} represents one recipe slot
+     * and holds all ingredients JEI considers valid for it, so tag based recipes (e.g. any planks)
+     * can be satisfied too.
+     */
+    public record CPacketAltarTransfer(List<List<ItemStack>> inputs) implements CustomPacketPayload {
         public static final CustomPacketPayload.Type<CPacketAltarTransfer> TYPE =
                 new CustomPacketPayload.Type<>(
                         ResourceLocation.parse("tlmjei:altar_transfer"));
@@ -48,19 +57,38 @@ public class NetworkHandler {
                 new StreamCodec<>() {
                     @Override
                     public CPacketAltarTransfer decode(RegistryFriendlyByteBuf buf) {
-                        int size = buf.readVarInt();
-                        List<ItemStack> items = new ArrayList<>(size);
-                        for (int i = 0; i < size; i++) {
-                            items.add(ItemStack.STREAM_CODEC.decode(buf));
+                        int groupCount = buf.readVarInt();
+                        List<List<ItemStack>> groups = new ArrayList<>(Math.min(groupCount, MAX_SLOTS));
+                        for (int i = 0; i < groupCount; i++) {
+                            int candidateCount = buf.readVarInt();
+                            List<ItemStack> candidates = new ArrayList<>(
+                                    Math.min(candidateCount, MAX_CANDIDATES_PER_SLOT));
+                            for (int j = 0; j < candidateCount; j++) {
+                                ItemStack stack = ItemStack.STREAM_CODEC.decode(buf);
+                                if (j < MAX_CANDIDATES_PER_SLOT) {
+                                    candidates.add(stack);
+                                }
+                            }
+                            if (i < MAX_SLOTS) {
+                                groups.add(candidates);
+                            }
                         }
-                        return new CPacketAltarTransfer(items);
+                        return new CPacketAltarTransfer(groups);
                     }
 
                     @Override
                     public void encode(RegistryFriendlyByteBuf buf, CPacketAltarTransfer pkt) {
-                        buf.writeVarInt(pkt.inputs.size());
-                        for (ItemStack stack : pkt.inputs) {
-                            ItemStack.STREAM_CODEC.encode(buf, stack);
+                        int groupCount = Math.min(pkt.inputs.size(), MAX_SLOTS);
+                        buf.writeVarInt(groupCount);
+                        for (int i = 0; i < groupCount; i++) {
+                            List<ItemStack> group = pkt.inputs.get(i);
+                            int candidateCount = Math.min(group.size(), MAX_CANDIDATES_PER_SLOT);
+                            buf.writeVarInt(candidateCount);
+                            for (int j = 0; j < candidateCount; j++) {
+                                ItemStack stack = group.get(j);
+                                ItemStack.STREAM_CODEC.encode(
+                                        buf, stack == null ? ItemStack.EMPTY : stack);
+                            }
                         }
                     }
                 };

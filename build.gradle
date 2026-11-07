@@ -2,11 +2,11 @@ plugins {
     id 'net.neoforged.gradle.userdev' version '7.0.120'
 }
 
-version = '2.0.0'
-group = 'com.tlmjei'
+version = mod_version
+group = mod_group_id
 
 base {
-    archivesName = 'tlmjei'
+    archivesName = mod_id
 }
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
@@ -21,15 +21,33 @@ runs {
 }
 
 repositories {
+    // Official CDN mirror of maven.neoforged.net, which is unreachable on some networks.
+    maven { url = "https://neoforged.forgecdn.net/releases" }
     mavenCentral()
     maven { url = "https://maven.blamejared.com/" }
 }
 
 dependencies {
-    implementation "net.neoforged:neoforge:21.1.234"
+    implementation "net.neoforged:neoforge:${neoforge_version}"
     compileOnly "mezz.jei:jei-1.21.1-common-api:19.9.1.125"
     compileOnly "mezz.jei:jei-1.21.1-neoforge-api:19.9.1.125"
     runtimeOnly "mezz.jei:jei-1.21.1-neoforge:19.9.1.125"
+}
+
+// Expand ${...} placeholders in neoforge.mods.toml with values from gradle.properties.
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            minecraft_version: minecraft_version,
+            neoforge_version : neoforge_version,
+            mod_id           : mod_id,
+            mod_name         : mod_name,
+            mod_version      : mod_version
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/neoforge.mods.toml']) {
+        expand replaceProperties + [project: project]
+    }
 }
 
 tasks.named('jar', Jar).configure {

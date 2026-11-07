@@ -1,29 +1,47 @@
 package com.tlmjei.compat;
 
+import com.tlmjei.config.TlmJeiConfig;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.core.Direction;
 import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.items.IItemHandler;
-import net.minecraft.core.registries.BuiltInRegistries;
+import net.neoforged.neoforge.items.IItemHandlerModifiable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Searches equipped backpacks and nearby containers for crafting materials.
  * NeoForge 1.21.1 version — uses new Capabilities API (no LazyOptional).
+ *
+ * <p>Containers are scanned recursively: a backpack (L2 ender backpack, dimensional storage,
+ * normal backpack, drawer, ...) that is stored inside another container is opened and searched
+ * as well. This is required for setups like a dimensional backpack nested inside an ender backpack.</p>
  */
 public class BackpackCompat {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("tlmjei_backpack");
+    private static final int MAX_DEPTH = 8;
+
     private static Boolean l2Loaded, sbLoaded, curiosLoaded;
 
     private static boolean l2Loaded() {
@@ -41,164 +59,214 @@ public class BackpackCompat {
         return curiosLoaded;
     }
 
-    /** Try to take one matching item from any source (backpacks, curios, containers). */
+    /** Try to take one matching item from any source (inventory, backpacks, curios, containers). */
     public static ItemStack tryTakeItem(Player player, ItemStack needed) {
-        LOGGER.info("tryTakeItem called, l2={} sb={} curios={}", l2Loaded(), sbLoaded(), curiosLoaded());
         if (needed.isEmpty()) return ItemStack.EMPTY;
-        if (!l2Loaded() && !sbLoaded()) return ItemStack.EMPTY;
+        return tryTakeAnyItem(player, Set.of(needed.getItem()));
+    }
 
-        // Scan main inventory + offhand
+    /**
+     * Try to take one item whose type is contained in {@code wanted} from any source:
+     * the player inventory, equipped backpacks, Curios slots and nearby containers.
+     * Backpacks found inside other containers are searched recursively.
+     */
+    public static ItemStack tryTakeAnyItem(Player player, Collection<Item> wanted) {
+        if (wanted.isEmpty()) return ItemStack.EMPTY;
+        Set<Item> want = (wanted instanceof Set<Item> set) ? set : new LinkedHashSet<>(wanted);
+
+        // 1. Plain player inventory (main inventory, armor slots and offhand).
+        ItemStack fromInventory = takeFromInventory(player, want);
+        if (!fromInventory.isEmpty()) return fromInventory;
+
+        Set<ItemStack> visiting = Collections.newSetFromMap(new IdentityHashMap<>());
+
+        // 2. Backpacks / container items carried or worn by the player.
         for (ItemStack stack : allMainItems(player)) {
-            if (stack.isEmpty() || !isBackpackItem(stack)) continue;
-            LOGGER.info("Found backpack: {}", BuiltInRegistries.ITEM.getKey(stack.getItem()));
-            ItemStack result = extractFrom(stack, needed, player);
+            if (!isContainerItem(stack)) continue;
+            ItemStack result = extractDeep(stack, want, player, 0, visiting);
             if (!result.isEmpty()) return result;
         }
 
-        // Scan Curios slots
+        // 3. Curios slots.
         if (curiosLoaded()) {
             for (ItemStack stack : allCurioItems(player)) {
-                if (stack.isEmpty() || !isBackpackItem(stack)) continue;
-                LOGGER.info("Found backpack in Curios: {}", BuiltInRegistries.ITEM.getKey(stack.getItem()));
-                ItemStack result = extractFrom(stack, needed, player);
+                if (!isContainerItem(stack)) continue;
+                ItemStack result = extractDeep(stack, want, player, 0, visiting);
                 if (!result.isEmpty()) return result;
             }
         }
 
-        // Scan nearby containers
-        if (com.tlmjei.config.TlmJeiConfig.containerSearchRange > 0) {
-            ItemStack fromContainer = tryTakeFromContainer(player, needed);
+        // 4. Nearby containers (also scans backpacks stored inside those containers).
+        if (TlmJeiConfig.containerSearchRange > 0) {
+            ItemStack fromContainer = tryTakeFromContainer(player, want, visiting);
             if (!fromContainer.isEmpty()) return fromContainer;
         }
 
-        LOGGER.info("tryTakeItem: item not found");
         return ItemStack.EMPTY;
     }
 
-    // ---- detection ----
+    // ---- source scanning ----
 
-    private static boolean isBackpackItem(ItemStack stack) {
-        String ns = BuiltInRegistries.ITEM.getKey(stack.getItem()).getNamespace();
-        return (l2Loaded() && ns.equals("l2backpack")) ||
-               (sbLoaded() && ns.equals("sophisticatedbackpacks"));
-    }
-
-    // ---- extraction ----
-
-    private static ItemStack extractFrom(ItemStack backpack, ItemStack needed, @Nullable Player player) {
-        String ns = BuiltInRegistries.ITEM.getKey(backpack.getItem()).getNamespace();
-
-        if (ns.equals("l2backpack")) {
-            ItemStack taken = extractFromL2Nbt(backpack, needed);
+    private static ItemStack takeFromInventory(Player player, Set<Item> wanted) {
+        var inventory = player.getInventory();
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (stack.isEmpty() || !wanted.contains(stack.getItem())) continue;
+            ItemStack taken = inventory.removeItem(slot, 1);
             if (!taken.isEmpty()) return taken;
-            taken = extractFromL2InvCap(backpack, needed, player);
-            if (!taken.isEmpty()) return taken;
-            taken = extractFromL2Drawer(backpack, needed, player);
-            if (!taken.isEmpty()) return taken;
-        }
-
-        // Fallback: ITEM_HANDLER item capability (NeoForge 1.21 style)
-        var handler = backpack.getCapability(net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.ITEM);
-        if (handler != null) {
-            for (int slot = 0; slot < handler.getSlots(); slot++) {
-                ItemStack inSlot = handler.getStackInSlot(slot);
-                if (!inSlot.isEmpty() && ItemStack.isSameItem(inSlot, needed)) {
-                    ItemStack taken = handler.extractItem(slot, 1, false);
-                    if (!taken.isEmpty()) return taken;
-                }
-            }
         }
         return ItemStack.EMPTY;
     }
 
-    // ---- L2Backpack NBT ----
+    private static List<ItemStack> allMainItems(Player player) {
+        List<ItemStack> list = new ArrayList<>();
+        var inventory = player.getInventory();
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            ItemStack stack = inventory.getItem(i);
+            if (!stack.isEmpty()) list.add(stack);
+        }
+        return list;
+    }
 
-    private static ItemStack extractFromL2Nbt(ItemStack backpack, ItemStack needed) {
+    // ---- container detection ----
+
+    private static boolean isContainerItem(ItemStack stack) {
+        if (stack.isEmpty()) return false;
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        if (id == null) return false;
+        String namespace = id.getNamespace();
+        if ("l2backpack".equals(namespace)) return l2Loaded();
+        if ("sophisticatedbackpacks".equals(namespace)) return sbLoaded();
+        return false;
+    }
+
+    // ---- recursive extraction ----
+
+    private static ItemStack extractDeep(ItemStack container, Set<Item> wanted, Player player,
+                                         int depth, Set<ItemStack> visiting) {
+        if (depth > MAX_DEPTH || container.isEmpty()) return ItemStack.EMPTY;
+        // Identity-based guard so a container that (indirectly) contains itself cannot loop forever.
+        if (!visiting.add(container)) return ItemStack.EMPTY;
+
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(container.getItem());
+        String namespace = id == null ? "" : id.getNamespace();
+
         try {
-            Object item = backpack.getItem();
-            Class<?> itemClass = item.getClass();
-            try {
-                Method getItems = findMethod(itemClass, "getItems", ItemStack.class);
-                if (getItems != null) {
-                    List<?> items = (List<?>) getItems.invoke(item, backpack);
-                    return findAndRemove(items, needed);
-                }
-            } catch (Exception ignored) {}
-            try {
-                Method getContent = findMethod(itemClass, "getContent", ItemStack.class);
-                if (getContent != null) {
-                    List<?> items = (List<?>) getContent.invoke(item, backpack);
-                    return findAndRemove(items, needed);
-                }
-            } catch (Exception ignored) {}
+            if ("l2backpack".equals(namespace)) {
+                // Drawers keep their content in components and are not exposed as an item capability.
+                ItemStack taken = extractFromDrawer(container, wanted, player);
+                if (!taken.isEmpty()) return taken;
+
+                // Ender backpack -> player ender chest, dimensional storage -> shared storage.
+                taken = extractFromInvCap(container, wanted, player, depth, visiting);
+                if (!taken.isEmpty()) return taken;
+            }
+
+            // Normal L2 backpacks/bags and Sophisticated Backpacks expose an item handler capability.
+            IItemHandler handler = container.getCapability(Capabilities.ItemHandler.ITEM);
+            if (handler != null) {
+                return extractFromHandler(handler, wanted, player, depth, visiting);
+            }
         } catch (Exception e) {
-            LOGGER.warn("L2Nbt error: {}", e.getMessage());
+            LOGGER.debug("Failed to search container {}: {}", id, e.toString());
         }
         return ItemStack.EMPTY;
     }
 
-    private static ItemStack findAndRemove(List<?> items, ItemStack needed) {
-        for (int i = 0; i < items.size(); i++) {
-            ItemStack st = (ItemStack) items.get(i);
-            if (!st.isEmpty() && ItemStack.isSameItem(st, needed)) {
-                ItemStack taken = st.copy();
-                taken.setCount(1);
-                st.shrink(1);
-                return taken;
+    private static ItemStack extractFromHandler(IItemHandler handler, Set<Item> wanted, Player player,
+                                                int depth, Set<ItemStack> visiting) {
+        int slots = handler.getSlots();
+        for (int slot = 0; slot < slots; slot++) {
+            ItemStack inSlot;
+            try {
+                inSlot = handler.getStackInSlot(slot);
+            } catch (Exception e) {
+                continue;
             }
-        }
-        return ItemStack.EMPTY;
-    }
+            if (inSlot.isEmpty()) continue;
 
-    // ---- L2Backpack getInvCap (WorldChestItem / EnderBackpackItem) ----
+            if (wanted.contains(inSlot.getItem())) {
+                ItemStack taken = handler.extractItem(slot, 1, false);
+                if (!taken.isEmpty()) return taken;
+            }
 
-    private static ItemStack extractFromL2InvCap(ItemStack stack, ItemStack needed, @Nullable Player player) {
-        if (!(player instanceof net.minecraft.server.level.ServerPlayer sp)) return ItemStack.EMPTY;
-        try {
-            Method getInvCap = stack.getItem().getClass()
-                    .getMethod("getInvCap", ItemStack.class, net.minecraft.server.level.ServerPlayer.class);
-            Object handler = getInvCap.invoke(stack.getItem(), stack, sp);
-            if (handler instanceof IItemHandler ih) {
-                for (int slot = 0; slot < ih.getSlots(); slot++) {
-                    ItemStack in = ih.getStackInSlot(slot);
-                    if (!in.isEmpty() && ItemStack.isSameItem(in, needed)) {
-                        ItemStack taken = ih.extractItem(slot, 1, false);
-                        if (!taken.isEmpty()) return taken;
-                    }
+            if (depth < MAX_DEPTH && isContainerItem(inSlot)) {
+                ItemStack taken = extractDeep(inSlot, wanted, player, depth + 1, visiting);
+                if (!taken.isEmpty()) {
+                    writeBack(handler, slot, inSlot);
+                    return taken;
                 }
             }
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /**
+     * Persists a modified nested container stack back into its parent handler. Handlers may return
+     * copies of the stacks they hold (component based handlers in particular), in which case the
+     * mutated copy has to be written back or the extraction would be lost / duplicated.
+     */
+    private static void writeBack(IItemHandler handler, int slot, ItemStack stack) {
+        if (!(handler instanceof IItemHandlerModifiable modifiable)) return;
+        try {
+            ItemStack current = handler.getStackInSlot(slot);
+            if (current.isEmpty() || !ItemStack.isSameItem(current, stack)) return;
+            modifiable.setStackInSlot(slot, stack);
+        } catch (Exception e) {
+            LOGGER.debug("Failed to write back slot {}: {}", slot, e.toString());
+        }
+    }
+
+    // ---- L2Backpack getInvCap (ender backpack / dimensional storage) ----
+
+    @Nullable
+    private static IItemHandler getInvCapHandler(ItemStack stack, Player player) {
+        if (!(player instanceof ServerPlayer serverPlayer)) return null;
+        try {
+            Method method = stack.getItem().getClass()
+                    .getMethod("getInvCap", ItemStack.class, ServerPlayer.class);
+            Object handler = method.invoke(stack.getItem(), stack, serverPlayer);
+            return handler instanceof IItemHandler itemHandler ? itemHandler : null;
         } catch (NoSuchMethodException ignored) {
+            return null;
         } catch (Exception e) {
-            LOGGER.warn("L2InvCap error: {}", e.getMessage());
+            LOGGER.debug("getInvCap failed for {}: {}", stack.getItem(), e.toString());
+            return null;
         }
-        return ItemStack.EMPTY;
+    }
+
+    private static ItemStack extractFromInvCap(ItemStack stack, Set<Item> wanted, Player player,
+                                               int depth, Set<ItemStack> visiting) {
+        IItemHandler handler = getInvCapHandler(stack, player);
+        if (handler == null) return ItemStack.EMPTY;
+        return extractFromHandler(handler, wanted, player, depth, visiting);
     }
 
     // ---- L2Backpack drawers ----
 
-    private static ItemStack extractFromL2Drawer(ItemStack stack, ItemStack needed, @Nullable Player player) {
+    private static ItemStack extractFromDrawer(ItemStack drawer, Set<Item> wanted, Player player) {
         try {
-            Method getItem = stack.getItem().getClass().getMethod("getItem", ItemStack.class);
-            Method getCount = stack.getItem().getClass().getMethod("getCount", ItemStack.class);
-            Method setCount = stack.getItem().getClass().getMethod("setCount", ItemStack.class, int.class);
+            Object item = drawer.getItem();
+            Method getContent = item.getClass().getMethod("getDrawerContent", ItemStack.class);
+            ItemStack content = (ItemStack) getContent.invoke(item, drawer);
+            if (content.isEmpty() || !wanted.contains(content.getItem())) return ItemStack.EMPTY;
 
-            net.minecraft.world.item.Item storedItem = (net.minecraft.world.item.Item) getItem.invoke(stack.getItem(), stack);
-            int count = (int) getCount.invoke(stack.getItem(), stack);
-            if (!storedItem.equals(needed.getItem()) || count <= 0) return ItemStack.EMPTY;
-
-            setCount.invoke(stack.getItem(), stack, count - 1);
-            return new ItemStack(storedItem, 1);
+            Method takeItem = item.getClass().getMethod(
+                    "takeItem", ItemStack.class, int.class, Player.class, boolean.class);
+            Object result = takeItem.invoke(item, drawer, 1, player, false);
+            return result instanceof ItemStack taken ? taken : ItemStack.EMPTY;
         } catch (NoSuchMethodException ignored) {
+            return ItemStack.EMPTY;
         } catch (Exception e) {
-            LOGGER.warn("L2Drawer error: {}", e.getMessage());
+            LOGGER.debug("Drawer extraction failed for {}: {}", drawer.getItem(), e.toString());
+            return ItemStack.EMPTY;
         }
-        return ItemStack.EMPTY;
     }
 
-    // ---- container scanning ----
+    // ---- nearby containers ----
 
-    private static ItemStack tryTakeFromContainer(Player player, ItemStack needed) {
-        int range = (int) Math.ceil(com.tlmjei.config.TlmJeiConfig.containerSearchRange);
+    private static ItemStack tryTakeFromContainer(Player player, Set<Item> wanted, Set<ItemStack> visiting) {
+        int range = (int) Math.ceil(TlmJeiConfig.containerSearchRange);
         if (range <= 0) return ItemStack.EMPTY;
 
         try {
@@ -206,6 +274,7 @@ public class BackpackCompat {
             BlockPos center = player.blockPosition();
             int cx = center.getX() >> 4, cz = center.getZ() >> 4;
             int chunkRadius = (range >> 4) + 1;
+            double rangeSq = (double) range * range;
 
             for (int dx = -chunkRadius; dx <= chunkRadius; dx++) {
                 for (int dz = -chunkRadius; dz <= chunkRadius; dz++) {
@@ -215,31 +284,33 @@ public class BackpackCompat {
 
                     for (var entry : chunk.getBlockEntities().entrySet()) {
                         BlockPos pos = entry.getKey();
-                        if (Math.sqrt(pos.distSqr(center)) > range) continue;
+                        if (pos.distSqr(center) > rangeSq) continue;
 
-                        ItemStack result = extractFromBE(entry.getValue(), needed);
+                        ItemStack result = extractFromBE(level, entry.getValue(), wanted, player, visiting);
                         if (!result.isEmpty()) return result;
                     }
                 }
             }
         } catch (Exception e) {
-            LOGGER.warn("Container scan error: {}", e.getMessage());
+            LOGGER.debug("Container scan failed: {}", e.toString());
         }
         return ItemStack.EMPTY;
     }
 
-    private static ItemStack extractFromBE(BlockEntity be, ItemStack needed) {
-        // NeoForge 1.21: BlockCapabilities return directly or null
-        var handler = be.getLevel().getCapability(net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK, be.getBlockPos(), be.getBlockState(), be, Direction.UP);
-        if (handler == null) return ItemStack.EMPTY;
-        for (int slot = 0; slot < handler.getSlots(); slot++) {
-            ItemStack inSlot = handler.getStackInSlot(slot);
-            if (!inSlot.isEmpty() && ItemStack.isSameItem(inSlot, needed)) {
-                ItemStack taken = handler.extractItem(slot, 1, false);
-                if (!taken.isEmpty()) return taken;
-            }
+    private static ItemStack extractFromBE(Level level, BlockEntity be, Set<Item> wanted,
+                                           Player player, Set<ItemStack> visiting) {
+        if (be == null) return ItemStack.EMPTY;
+        BlockPos pos = be.getBlockPos();
+
+        IItemHandler handler = level.getCapability(
+                Capabilities.ItemHandler.BLOCK, pos, be.getBlockState(), be, null);
+        if (handler == null) {
+            handler = level.getCapability(
+                    Capabilities.ItemHandler.BLOCK, pos, be.getBlockState(), be, Direction.UP);
         }
-        return ItemStack.EMPTY;
+        if (handler == null) return ItemStack.EMPTY;
+
+        return extractFromHandler(handler, wanted, player, 0, visiting);
     }
 
     // ---- Curios ----
@@ -248,48 +319,45 @@ public class BackpackCompat {
         List<ItemStack> list = new ArrayList<>();
         try {
             Class<?> apiClass = Class.forName("top.theillusivec4.curios.api.CuriosApi");
-            Method getInv = apiClass.getMethod("getCuriosInventory", net.minecraft.world.entity.LivingEntity.class);
-            Object lazyOpt = getInv.invoke(null, player);
-            if (lazyOpt == null) return list;
-            if (!(boolean) lazyOpt.getClass().getMethod("isPresent").invoke(lazyOpt)) return list;
+            Object result = apiClass
+                    .getMethod("getCuriosInventory", net.minecraft.world.entity.LivingEntity.class)
+                    .invoke(null, player);
+            Object curiosHandler = unwrapPresent(result);
+            if (curiosHandler == null) return list;
 
-            Object icih;
-            try {
-                icih = lazyOpt.getClass().getMethod("orElse", Object.class).invoke(lazyOpt, (Object) null);
-            } catch (NoSuchMethodException e) {
-                return list;
-            }
-            if (icih == null) return list;
-
-            Object curioMap = icih.getClass().getMethod("getCurios").invoke(icih);
-            for (Object handler : ((java.util.Map<?, ?>) curioMap).values()) {
-                Object stacks = handler.getClass().getMethod("getStacks").invoke(handler);
+            Object curioMap = curiosHandler.getClass().getMethod("getCurios").invoke(curiosHandler);
+            for (Object stacksHandler : ((Map<?, ?>) curioMap).values()) {
+                Object stacks = stacksHandler.getClass().getMethod("getStacks").invoke(stacksHandler);
                 int slots = (int) stacks.getClass().getMethod("getSlots").invoke(stacks);
                 for (int i = 0; i < slots; i++) {
-                    ItemStack st = (ItemStack) stacks.getClass().getMethod("getStackInSlot", int.class).invoke(stacks, i);
-                    if (!st.isEmpty()) list.add(st);
+                    ItemStack stack = (ItemStack) stacks.getClass()
+                            .getMethod("getStackInSlot", int.class).invoke(stacks, i);
+                    if (!stack.isEmpty()) list.add(stack);
                 }
             }
         } catch (Exception e) {
-            LOGGER.warn("Curios scan error: {}", e.getMessage());
+            LOGGER.debug("Curios scan failed: {}", e.toString());
         }
         return list;
     }
 
-    // ---- utility ----
-
-    private static List<ItemStack> allMainItems(Player player) {
-        List<ItemStack> list = new ArrayList<>();
-        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-            ItemStack s = player.getInventory().getItem(i);
-            if (!s.isEmpty()) list.add(s);
+    /**
+     * Unwraps both {@link java.util.Optional} (Curios for 1.21) and the old Forge
+     * {@code LazyOptional} (Curios for 1.20) without a compile-time dependency on either API.
+     */
+    @Nullable
+    private static Object unwrapPresent(@Nullable Object optionalLike) {
+        if (optionalLike == null) return null;
+        if (optionalLike instanceof java.util.Optional<?> optional) {
+            return optional.orElse(null);
         }
-        ItemStack off = player.getOffhandItem();
-        if (!off.isEmpty()) list.add(off);
-        return list;
-    }
-
-    private static Method findMethod(Class<?> clazz, String name, Class<?>... paramTypes) {
-        try { return clazz.getMethod(name, paramTypes); } catch (Exception e) { return null; }
+        try {
+            boolean present = (boolean) optionalLike.getClass().getMethod("isPresent").invoke(optionalLike);
+            if (!present) return null;
+            return optionalLike.getClass().getMethod("orElse", Object.class)
+                    .invoke(optionalLike, (Object) null);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
