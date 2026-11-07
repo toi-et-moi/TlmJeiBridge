@@ -5,8 +5,20 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="60382e52-2f04-460e-a5ab-ca8ee96d3862" name="更改" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/modules/TlmJeiBridge.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules/TlmJeiBridge.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules/TlmJeiBridge.test.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules/TlmJeiBridge.test.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules/com.tlmjei.TlmJeiBridge.main.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules/com.tlmjei.TlmJeiBridge.main.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/build.gradle" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/gradle.properties" beforeDir="false" afterPath="$PROJECT_DIR$/gradle.properties" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/tlmjei/compat/BackpackCompat.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/tlmjei/compat/BackpackCompat.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/tlmjei/config/TlmJeiConfig.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/tlmjei/config/TlmJeiConfig.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/tlmjei/jei/AltarTransferHandler.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/tlmjei/jei/AltarTransferHandler.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/tlmjei/jei/TLMJEIPlugin.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/tlmjei/jei/TLMJEIPlugin.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/tlmjei/network/CPacketAltarTransfer.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/tlmjei/network/CPacketAltarTransfer.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/tlmjei/util/AltarHelper.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/tlmjei/util/AltarHelper.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/resources/META-INF/mods.toml" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/resources/META-INF/mods.toml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -61,21 +73,21 @@
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "toi-et-moi"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;toi-et-moi&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/toi-et-moi/TlmJeiBridge.git",
-    "accountId": "3c494aa7-9b4b-4201-96e0-a1f4cb0484a2"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/toi-et-moi/TlmJeiBridge.git&quot;,
+    &quot;accountId&quot;: &quot;3c494aa7-9b4b-4201-96e0-a1f4cb0484a2&quot;
   }
-}]]></component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 7
-}]]></component>
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 7
+}</component>
   <component name="ProjectId" id="3FTaWdVK9RdW8f8A4JAEt58jkFk" />
   <component name="ProjectViewState">
     <option name="showLibraryContents" value="true" />
@@ -83,17 +95,22 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "Gradle.D:/Github/toi-et-moi/TlmJeiBridge [createMcpToSrg].executor": "Run",
+    "Gradle.D:/Github/toi-et-moi/TlmJeiBridge-1.20.1 [createMcpToSrg].executor": "Run",
     "Gradle.D:/Github/toi-et-moi/TlmJeiBridge.executor": "Run",
     "Gradle.TlmJeiBridge [build].executor": "Run",
     "Gradle.TlmJeiBridge [createMcpToSrg].executor": "Run",
     "Gradle.TlmJeiBridge [idePostSync].executor": "Run",
+    "Gradle.TlmJeiBridge-1.20.1 [clean].executor": "Run",
+    "Gradle.TlmJeiBridge-1.20.1 [createMcpToSrg].executor": "Run",
+    "Gradle.TlmJeiBridge-1.20.1 [idePostSync].executor": "Run",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "master",
     "ignore.virus.scanning.warn.message": "true",
     "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "D:/Github/toi-et-moi/TlmJeiBridge",
+    "last_opened_file_path": "D:/Github/toi-et-moi/TlmJeiBridge-1.20.1",
     "settings.editor.selected.configurable": "reference.settingsdialog.project.gradle"
   }
 }]]></component>
@@ -170,6 +187,28 @@
       <RunAsTest>false</RunAsTest>
       <method v="2" />
     </configuration>
+    <configuration name="TlmJeiBridge-1.20.1 [clean]" type="GradleRunConfiguration" factoryName="Gradle" temporary="true">
+      <ExternalSystemSettings>
+        <option name="executionName" />
+        <option name="externalProjectPath" value="$PROJECT_DIR$" />
+        <option name="externalSystemIdString" value="GRADLE" />
+        <option name="scriptParameters" />
+        <option name="taskDescriptions">
+          <list />
+        </option>
+        <option name="taskNames">
+          <list>
+            <option value="clean" />
+          </list>
+        </option>
+        <option name="vmOptions" />
+      </ExternalSystemSettings>
+      <ExternalSystemDebugServerProcess>true</ExternalSystemDebugServerProcess>
+      <ExternalSystemReattachDebugProcess>true</ExternalSystemReattachDebugProcess>
+      <DebugAllEnabled>false</DebugAllEnabled>
+      <RunAsTest>false</RunAsTest>
+      <method v="2" />
+    </configuration>
     <configuration default="true" type="JetRunConfigurationType">
       <method v="2">
         <option name="Make" enabled="true" />
@@ -182,6 +221,7 @@
     <recent_temporary>
       <list>
         <item itemvalue="Gradle.TlmJeiBridge [build]" />
+        <item itemvalue="Gradle.TlmJeiBridge-1.20.1 [clean]" />
         <item itemvalue="Gradle.D:/Github/toi-et-moi/TlmJeiBridge" />
       </list>
     </recent_temporary>

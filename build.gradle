@@ -2,14 +2,14 @@ plugins {
     id 'net.minecraftforge.gradle' version '[6.0.1,6.2]'
 }
 
-version = '1.0.0'
-group = 'com.tlmjei'
-archivesBaseName = 'tlmjei'
+version = mod_version
+group = mod_group_id
+archivesBaseName = mod_id
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
 minecraft {
-    mappings channel: 'official', version: '1.20.1'
+    mappings channel: 'official', version: minecraft_version
     runs {
         client {
             workingDirectory project.file('run')
@@ -30,12 +30,28 @@ repositories {
 }
 
 dependencies {
-    minecraft 'net.minecraftforge:forge:1.20.1-47.4.0'
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 
     // JEI (compile + runtime)
     compileOnly fg.deobf("mezz.jei:jei-1.20.1-common-api:15.20.0.104")
     compileOnly fg.deobf("mezz.jei:jei-1.20.1-forge-api:15.20.0.104")
     runtimeOnly fg.deobf("mezz.jei:jei-1.20.1-forge:15.20.0.104")
+}
+
+// Expand ${...} placeholders in mods.toml with values from gradle.properties.
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            minecraft_version: minecraft_version,
+            forge_version    : forge_version,
+            mod_id           : mod_id,
+            mod_name         : mod_name,
+            mod_version      : mod_version
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/mods.toml']) {
+        expand replaceProperties + [project: project]
+    }
 }
 
 // IntelliJ IDEA expects this task for Gradle sync

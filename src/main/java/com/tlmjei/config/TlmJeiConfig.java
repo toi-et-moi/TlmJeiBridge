@@ -15,6 +15,9 @@ public class TlmJeiConfig {
     /** Range in blocks to search nearby containers for materials (0 = disabled). */
     public static double containerSearchRange = 32.0;
 
+    /** Range in blocks to search nearby shrine lamps for missing altar power (0 = disabled). */
+    public static double shrineLampRange = 8.0;
+
     // ---- Forge config spec ----
 
     private static final ForgeConfigSpec SPEC;
@@ -43,6 +46,7 @@ public class TlmJeiConfig {
     private static void apply() {
         altarSearchRange = CONFIG.altarRange.get();
         containerSearchRange = CONFIG.containerRange.get();
+        shrineLampRange = CONFIG.shrineLampRange.get();
     }
 
     // ---- internal config class ----
@@ -50,6 +54,7 @@ public class TlmJeiConfig {
     private static class Config {
         private final ForgeConfigSpec.DoubleValue altarRange;
         private final ForgeConfigSpec.DoubleValue containerRange;
+        private final ForgeConfigSpec.DoubleValue shrineLampRange;
 
         Config(ForgeConfigSpec.Builder builder) {
             builder.push("altar");
@@ -62,6 +67,12 @@ public class TlmJeiConfig {
             containerRange = builder
                     .comment("Radius (in blocks) to search nearby chests/containers for materials. Set to 0 to disable.")
                     .defineInRange("searchRange", 32.0, 0.0, 64.0);
+            builder.pop();
+
+            builder.push("shrineLamp");
+            shrineLampRange = builder
+                    .comment("Radius (in blocks) to search nearby shrine lamps for missing altar power. Set to 0 to disable.")
+                    .defineInRange("searchRange", 8.0, 0.0, 64.0);
             builder.pop();
         }
     }
