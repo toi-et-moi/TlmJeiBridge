@@ -22,8 +22,10 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -135,14 +137,14 @@ public class AltarHelper {
         Object altarTE = findNearestAltar(player);
         if (altarTE == null) {
             player.displayClientMessage(
-                    Component.literal("§c未检测到附近的祭坛"), true);
+                    Component.translatable("tlmjei.message.altar_not_found"), true);
             return;
         }
 
         List<BlockPos> pedestals = getPedestalPositions(altarTE);
         if (pedestals == null || pedestals.size() != 6) {
             player.displayClientMessage(
-                    Component.literal("§c祭坛结构不完整"), true);
+                    Component.translatable("tlmjei.message.altar_incomplete"), true);
             return;
         }
 
@@ -154,18 +156,7 @@ public class AltarHelper {
         // Item types accepted by every recipe slot. JEI always provides 6 input slots, but some
         // altar recipes only use 2-3 ingredients, so empty slots are optional and must not be
         // reported as missing.
-        List<Set<Item>> wantedGroups = new ArrayList<>(6);
-        for (int i = 0; i < 6; i++) {
-            Set<Item> wanted = new LinkedHashSet<>();
-            if (i < ingredientGroups.size()) {
-                for (ItemStack candidate : ingredientGroups.get(i)) {
-                    if (candidate != null && !candidate.isEmpty()) {
-                        wanted.add(candidate.getItem());
-                    }
-                }
-            }
-            wantedGroups.add(wanted);
-        }
+        List<Set<Item>> wantedGroups = buildWantedGroups(ingredientGroups);
 
         ItemStack[] existing = new ItemStack[6];
         boolean[] usedPedestal = new boolean[6];
@@ -175,20 +166,7 @@ public class AltarHelper {
         }
 
         // Keep items that are already on a pedestal when the recipe accepts them.
-        int placed = 0;
-        for (int group = 0; group < 6; group++) {
-            Set<Item> wanted = wantedGroups.get(group);
-            if (wanted.isEmpty()) continue;
-            for (int p = 0; p < 6; p++) {
-                if (usedPedestal[p] || existing[p].isEmpty()) continue;
-                if (wanted.contains(existing[p].getItem())) {
-                    usedPedestal[p] = true;
-                    satisfiedGroup[group] = true;
-                    placed++;
-                    break;
-                }
-            }
-        }
+        int placed = matchExistingPedestals(wantedGroups, existing, usedPedestal, satisfiedGroup);
 
         // Fetch the remaining ingredients from the inventory, backpacks, Curios or containers.
         int missing = 0;
@@ -219,16 +197,163 @@ public class AltarHelper {
             }
         }
 
-        if (missing > 0) {
-            player.displayClientMessage(
-                    Component.literal("§e背包缺少 " + missing + " 种材料"), true);
-        }
-
         // Craft once every required slot is satisfied. Recipes with fewer than 6 ingredients
-        // only need their non-empty slots filled.
+        // only need their non-empty slots filled. Missing materials are surfaced by JEI's
+        // disabled + button and red slot highlights, so no extra chat/action-bar message.
         if (placed > 0 && missing == 0) {
             triggerAltarCraft(level, altarTE, player);
         }
+    }
+
+    /**
+     * Server-side dry run used for the JEI button state. Mirrors
+     * {@link #placeItemsOnNearestAltar(ServerPlayer, List)}: items already on the pedestals
+     * are reused first, then the remaining slots are matched against the same sources the
+     * real transfer searches. Returns the indexes of the recipe slots that cannot be filled.
+     */
+    public static List<Integer> findMissingIngredientGroups(ServerPlayer player,
+                                                            List<List<ItemStack>> ingredientGroups) {
+        List<Integer> missing = new ArrayList<>();
+        if (player == null || ingredientGroups == null || ingredientGroups.isEmpty()) return missing;
+        if (!ensureReflection()) return missing;
+
+        Object altarTE = findNearestAltar(player);
+        Level level = player.level();
+        List<BlockPos> pedestals = altarTE == null ? null : getPedestalPositions(altarTE);
+        boolean hasPedestals = pedestals != null && pedestals.size() == 6;
+
+        ItemStack[] existing = new ItemStack[6];
+        for (int i = 0; i < 6; i++) {
+            existing[i] = hasPedestals ? getPedestalItem(level, pedestals.get(i)) : ItemStack.EMPTY;
+        }
+
+        Map<Item, Integer> pool = new LinkedHashMap<>();
+        BackpackCompat.collectAvailableItems(player, pool);
+        return dryRun(ingredientGroups, existing, hasPedestals, pool);
+    }
+
+    /**
+     * Batch version used by the JEI recipe preload. The relatively expensive nearby-container
+     * scan is performed once and every recipe is then matched against the same snapshot.
+     */
+    public static List<List<Integer>> findMissingIngredientGroupsBatch(
+            ServerPlayer player, List<List<List<ItemStack>>> recipes) {
+        List<List<Integer>> results = new ArrayList<>(recipes.size());
+        if (player == null || !ensureReflection()) {
+            for (int i = 0; i < recipes.size(); i++) results.add(new ArrayList<>());
+            return results;
+        }
+
+        Object altarTE = findNearestAltar(player);
+        Level level = player.level();
+        List<BlockPos> pedestals = altarTE == null ? null : getPedestalPositions(altarTE);
+        boolean hasPedestals = pedestals != null && pedestals.size() == 6;
+
+        ItemStack[] existing = new ItemStack[6];
+        for (int i = 0; i < 6; i++) {
+            existing[i] = hasPedestals ? getPedestalItem(level, pedestals.get(i)) : ItemStack.EMPTY;
+        }
+
+        Map<Item, Integer> basePool = new LinkedHashMap<>();
+        BackpackCompat.collectAvailableItems(player, basePool);
+
+        for (List<List<ItemStack>> groups : recipes) {
+            results.add(dryRun(groups, existing, hasPedestals, basePool));
+        }
+        return results;
+    }
+
+    /** Match one recipe against an already collected inventory snapshot. */
+    private static List<Integer> dryRun(List<List<ItemStack>> ingredientGroups,
+                                        ItemStack[] existing, boolean hasPedestals,
+                                        Map<Item, Integer> basePool) {
+        List<Integer> missing = new ArrayList<>();
+        List<Set<Item>> wantedGroups = buildWantedGroups(ingredientGroups);
+        boolean[] usedPedestal = new boolean[6];
+        boolean[] satisfiedGroup = new boolean[6];
+        matchExistingPedestals(wantedGroups, existing, usedPedestal, satisfiedGroup);
+
+        // Each recipe must see the full pool; consuming one recipe must not affect the next one.
+        Map<Item, Integer> pool = new LinkedHashMap<>(basePool);
+
+        for (int group = 0; group < 6; group++) {
+            if (satisfiedGroup[group]) continue;
+
+            Set<Item> wanted = wantedGroups.get(group);
+            if (wanted.isEmpty()) continue; // optional slot of a recipe with fewer ingredients
+
+            int pedestalIndex = hasPedestals ? firstFreePedestal(usedPedestal) : 0;
+            if (hasPedestals && pedestalIndex < 0) {
+                missing.add(group);
+                continue;
+            }
+
+            if (!consumeFromPool(pool, wanted)) {
+                missing.add(group);
+                continue;
+            }
+
+            if (hasPedestals) {
+                usedPedestal[pedestalIndex] = true;
+            }
+        }
+        return missing;
+    }
+
+    /** Build the six ingredient groups (one accepted-item set per altar slot). */
+    private static List<Set<Item>> buildWantedGroups(List<List<ItemStack>> ingredientGroups) {
+        List<Set<Item>> wantedGroups = new ArrayList<>(6);
+        for (int i = 0; i < 6; i++) {
+            Set<Item> wanted = new LinkedHashSet<>();
+            if (i < ingredientGroups.size()) {
+                for (ItemStack candidate : ingredientGroups.get(i)) {
+                    if (candidate != null && !candidate.isEmpty()) {
+                        wanted.add(candidate.getItem());
+                    }
+                }
+            }
+            wantedGroups.add(wanted);
+        }
+        return wantedGroups;
+    }
+
+    /**
+     * Match recipe slots against items already lying on pedestals. Returns the number of
+     * reused pedestals (also added to the caller's placement counter).
+     */
+    private static int matchExistingPedestals(List<Set<Item>> wantedGroups, ItemStack[] existing,
+                                              boolean[] usedPedestal, boolean[] satisfiedGroup) {
+        int matched = 0;
+        for (int group = 0; group < 6; group++) {
+            Set<Item> wanted = wantedGroups.get(group);
+            if (wanted.isEmpty()) continue;
+            for (int p = 0; p < 6; p++) {
+                if (usedPedestal[p] || existing[p].isEmpty()) continue;
+                if (wanted.contains(existing[p].getItem())) {
+                    usedPedestal[p] = true;
+                    satisfiedGroup[group] = true;
+                    matched++;
+                    break;
+                }
+            }
+        }
+        return matched;
+    }
+
+    /** Consume one matching item from the dry-run pool, mirroring the extraction order. */
+    private static boolean consumeFromPool(Map<Item, Integer> pool, Set<Item> wanted) {
+        var iterator = pool.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            if (entry.getValue() <= 0 || !wanted.contains(entry.getKey())) continue;
+            if (entry.getValue() <= 1) {
+                iterator.remove();
+            } else {
+                entry.setValue(entry.getValue() - 1);
+            }
+            return true;
+        }
+        return false;
     }
 
     /**

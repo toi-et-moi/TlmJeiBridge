@@ -3,13 +3,17 @@ package com.tlmjei.jei;
 import com.tlmjei.TLMJEIBridge;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
+import mezz.jei.api.recipe.IRecipeManager;
 import mezz.jei.api.recipe.RecipeType;
+import mezz.jei.api.recipe.transfer.IRecipeTransferHandlerHelper;
 import mezz.jei.api.registration.IRecipeTransferRegistration;
+import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.InventoryMenu;
+import net.neoforged.fml.loading.FMLEnvironment;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -21,20 +25,38 @@ public class TLMJEIPlugin implements IModPlugin {
 
     static final RecipeType<Object> ALTAR_TYPE = resolveAltarRecipeType();
 
+    private static IRecipeManager recipeManager;
+
     @Override
     public ResourceLocation getPluginUid() {
         return UID;
     }
 
     @Override
+    public void onRuntimeAvailable(IJeiRuntime jeiRuntime) {
+        recipeManager = jeiRuntime.getRecipeManager();
+        // The prefetcher references client-only classes; never touch it on a dedicated server.
+        if (FMLEnvironment.dist.isClient()) {
+            AltarAvailabilityPrefetcher.register();
+        }
+    }
+
+    /** Used by the client-side recipe preload; null until JEI's runtime is available. */
+    public static IRecipeManager getRecipeManager() {
+        return recipeManager;
+    }
+
+    @Override
     public void registerRecipeTransferHandlers(IRecipeTransferRegistration registration) {
+        IRecipeTransferHandlerHelper transferHelper = registration.getTransferHelper();
+
         // JEI resolves transfer handlers by the exact container class, so register one handler
         // per known container screen. This makes the "+" button available in container screens
         // of backpack mods (where players usually browse recipes) instead of only in the player
         // inventory screen.
         for (Class<? extends AbstractContainerMenu> containerClass : transferContainerClasses()) {
             registration.addRecipeTransferHandler(
-                    new AltarTransferHandler(containerClass), ALTAR_TYPE);
+                    new AltarTransferHandler(containerClass, transferHelper), ALTAR_TYPE);
         }
     }
 

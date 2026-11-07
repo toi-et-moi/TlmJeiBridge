@@ -1,6 +1,5 @@
 package com.tlmjei.network;
 
-import com.tlmjei.TLMJEIBridge;
 import com.tlmjei.util.AltarHelper;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -20,6 +19,9 @@ import java.util.List;
 @EventBusSubscriber(bus = EventBusSubscriber.Bus.MOD)
 public class NetworkHandler {
 
+    /** Bump when payloads change so mismatched clients are rejected during negotiation. */
+    private static final String PROTOCOL_VERSION = "2";
+
     /** Safety caps so a malformed packet cannot allocate huge lists. */
     private static final int MAX_SLOTS = 16;
     private static final int MAX_CANDIDATES_PER_SLOT = 128;
@@ -30,9 +32,16 @@ public class NetworkHandler {
 
     @SubscribeEvent
     public static void onPayloadRegister(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar(TLMJEIBridge.MODID);
+        var registrar = event.registrar(PROTOCOL_VERSION);
         registrar.playToServer(CPacketAltarTransfer.TYPE, CPacketAltarTransfer.STREAM_CODEC,
                 NetworkHandler::handle);
+        registrar.playToServer(CPacketAltarAvailability.TYPE,
+                CPacketAltarAvailability.STREAM_CODEC, CPacketAltarAvailability::handle);
+        registrar.playToServer(CPacketAltarAvailabilityBatch.TYPE,
+                CPacketAltarAvailabilityBatch.STREAM_CODEC,
+                CPacketAltarAvailabilityBatch::handle);
+        registrar.playToClient(SPacketAltarAvailability.TYPE,
+                SPacketAltarAvailability.STREAM_CODEC, SPacketAltarAvailability::handle);
     }
 
     private static void handle(CPacketAltarTransfer packet, IPayloadContext ctx) {
