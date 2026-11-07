@@ -109,6 +109,164 @@ public class BackpackCompat {
         return ItemStack.EMPTY;
     }
 
+    /**
+     * Server-side dry run for the JEI transfer button. Collects every item that
+     * {@link #tryTakeAnyItem(Player, Collection)} could reach without removing anything.
+     *
+     * <p>The map is filled in the same order the extraction searches its sources (player
+     * inventory first, then carried/worn backpacks, Curios and nearby containers), so a
+     * caller can greedily consume it for the recipe slots and get the same answer the real
+     * transfer would produce.</p>
+     */
+    public static void collectAvailableItems(Player player, Map<Item, Integer> pool) {
+        if (player == null || pool == null) return;
+
+        // 1. Plain player inventory (main inventory, armor slots and offhand).
+        var inventory = player.getInventory();
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            addToPool(pool, inventory.getItem(slot));
+        }
+
+        Set<ItemStack> visiting = Collections.newSetFromMap(new IdentityHashMap<>());
+
+        // 2. Backpacks / container items carried or worn by the player.
+        for (ItemStack stack : allMainItems(player)) {
+            if (!isContainerItem(stack)) continue;
+            collectDeep(stack, player, pool, 0, visiting);
+        }
+
+        // 3. Curios slots.
+        if (curiosLoaded()) {
+            for (ItemStack stack : allCurioItems(player)) {
+                if (!isContainerItem(stack)) continue;
+                collectDeep(stack, player, pool, 0, visiting);
+            }
+        }
+
+        // 4. Nearby containers (also scans backpacks stored inside those containers).
+        if (TlmJeiConfig.containerSearchRange > 0) {
+            collectFromContainers(player, pool, visiting);
+        }
+    }
+
+    private static void addToPool(Map<Item, Integer> pool, ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return;
+        pool.merge(stack.getItem(), stack.getCount(), Integer::sum);
+    }
+
+    private static void collectDeep(ItemStack container, Player player, Map<Item, Integer> pool,
+                                    int depth, Set<ItemStack> visiting) {
+        if (depth > MAX_DEPTH || container.isEmpty()) return;
+        if (!visiting.add(container)) return;
+
+        ResourceLocation id = ForgeRegistries.ITEMS.getKey(container.getItem());
+        String namespace = id == null ? "" : id.getNamespace();
+
+        try {
+            if ("l2backpack".equals(namespace)) {
+                collectFromDrawer(container, player, pool);
+
+                IItemHandler invCap = getInvCapHandler(container, player);
+                if (invCap != null) {
+                    collectFromHandler(invCap, player, pool, depth, visiting);
+                }
+            }
+
+            IItemHandler handler = getItemHandler(container);
+            if (handler != null) {
+                collectFromHandler(handler, player, pool, depth, visiting);
+            }
+        } catch (Exception e) {
+            LOGGER.debug("Failed to inspect container {}: {}", id, e.toString());
+        }
+    }
+
+    private static void collectFromHandler(IItemHandler handler, Player player, Map<Item, Integer> pool,
+                                           int depth, Set<ItemStack> visiting) {
+        int slots = handler.getSlots();
+        for (int slot = 0; slot < slots; slot++) {
+            ItemStack inSlot;
+            try {
+                inSlot = handler.getStackInSlot(slot);
+            } catch (Exception e) {
+                continue;
+            }
+            if (inSlot.isEmpty()) continue;
+
+            addToPool(pool, inSlot);
+
+            if (depth < MAX_DEPTH && isContainerItem(inSlot)) {
+                collectDeep(inSlot, player, pool, depth + 1, visiting);
+            }
+        }
+    }
+
+    private static void collectFromDrawer(ItemStack drawer, Player player, Map<Item, Integer> pool) {
+        try {
+            Class<?> drawerInterface = Class.forName(
+                    "dev.xkmc.l2backpack.content.drawer.BaseDrawerItem");
+
+            // simulate = true: only ask how much could be taken, do not change the drawer.
+            Method takeItem = drawerInterface.getMethod(
+                    "takeItem", ItemStack.class, int.class, Player.class, boolean.class);
+            Object result = takeItem.invoke(drawer.getItem(), drawer, Integer.MAX_VALUE, player, true);
+            if (result instanceof ItemStack content) {
+                addToPool(pool, content);
+            }
+        } catch (ClassNotFoundException | NoSuchMethodException ignored) {
+        } catch (Exception e) {
+            LOGGER.debug("Drawer inspection failed for {}: {}", drawer.getItem(), e.toString());
+        }
+    }
+
+    private static void collectFromContainers(Player player, Map<Item, Integer> pool,
+                                              Set<ItemStack> visiting) {
+        int range = (int) Math.ceil(TlmJeiConfig.containerSearchRange);
+        if (range <= 0) return;
+
+        try {
+            Level level = player.level();
+            BlockPos center = player.blockPosition();
+            int cx = center.getX() >> 4, cz = center.getZ() >> 4;
+            int chunkRadius = (range >> 4) + 1;
+            double rangeSq = (double) range * range;
+
+            for (int dx = -chunkRadius; dx <= chunkRadius; dx++) {
+                for (int dz = -chunkRadius; dz <= chunkRadius; dz++) {
+                    if (!level.hasChunk(cx + dx, cz + dz)) continue;
+                    var chunk = level.getChunk(cx + dx, cz + dz);
+                    if (chunk == null) continue;
+
+                    for (var entry : chunk.getBlockEntities().entrySet()) {
+                        BlockPos pos = entry.getKey();
+                        if (pos.distSqr(center) > rangeSq) continue;
+                        collectFromBE(entry.getValue(), player, pool, visiting);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.debug("Container scan failed: {}", e.toString());
+        }
+    }
+
+    private static void collectFromBE(BlockEntity be, Player player, Map<Item, Integer> pool,
+                                      Set<ItemStack> visiting) {
+        if (be == null) return;
+
+        IItemHandler handler = null;
+        try {
+            handler = be.getCapability(ForgeCapabilities.ITEM_HANDLER, null).resolve().orElse(null);
+            if (handler == null) {
+                handler = be.getCapability(ForgeCapabilities.ITEM_HANDLER, Direction.UP)
+                        .resolve().orElse(null);
+            }
+        } catch (Exception ignored) {
+        }
+        if (handler == null) return;
+
+        collectFromHandler(handler, player, pool, 0, visiting);
+    }
+
     // ---- source scanning ----
 
     private static ItemStack takeFromInventory(Player player, Set<Item> wanted) {

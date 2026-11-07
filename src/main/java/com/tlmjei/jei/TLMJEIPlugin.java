@@ -3,8 +3,11 @@ package com.tlmjei.jei;
 import com.tlmjei.TLMJEIBridge;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
+import mezz.jei.api.recipe.IRecipeManager;
 import mezz.jei.api.recipe.RecipeType;
+import mezz.jei.api.recipe.transfer.IRecipeTransferHandlerHelper;
 import mezz.jei.api.registration.IRecipeTransferRegistration;
+import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ChestMenu;
@@ -23,7 +26,9 @@ public class TLMJEIPlugin implements IModPlugin {
     @SuppressWarnings("deprecation")
     private static final ResourceLocation UID = new ResourceLocation(TLMJEIBridge.MODID, "main");
 
-    static final RecipeType<Object> ALTAR_TYPE = resolveAltarRecipeType();
+    public static final RecipeType<Object> ALTAR_TYPE = resolveAltarRecipeType();
+
+    private static IRecipeManager recipeManager;
 
     /** Menus that can be open while the JEI "+" button must stay available. */
     private static final String[] L2_MENUS = {
@@ -48,36 +53,53 @@ public class TLMJEIPlugin implements IModPlugin {
     }
 
     @Override
+    public void onRuntimeAvailable(IJeiRuntime jeiRuntime) {
+        recipeManager = jeiRuntime.getRecipeManager();
+        // The prefetcher references client-only classes; never touch it on a dedicated server.
+        if (net.minecraftforge.fml.loading.FMLEnvironment.dist.isClient()) {
+            AltarAvailabilityPrefetcher.register();
+        }
+    }
+
+    /** Used by the client-side recipe preload; null until JEI's runtime is available. */
+    public static IRecipeManager getRecipeManager() {
+        return recipeManager;
+    }
+
+    @Override
     public void registerRecipeTransferHandlers(IRecipeTransferRegistration registration) {
+        var transferHelper = registration.getTransferHelper();
+
         // Player inventory, crafting table and chests (also covers containers opened via
         // the Sophisticated Backpacks upgrade / L2 interfaces that reuse a chest menu).
         registration.addRecipeTransferHandler(
-                new AltarTransferHandler(InventoryMenu.class), ALTAR_TYPE);
+                new AltarTransferHandler(InventoryMenu.class, transferHelper), ALTAR_TYPE);
         registration.addRecipeTransferHandler(
-                new AltarTransferHandler(CraftingMenu.class), ALTAR_TYPE);
+                new AltarTransferHandler(CraftingMenu.class, transferHelper), ALTAR_TYPE);
         registration.addRecipeTransferHandler(
-                new AltarTransferHandler(ChestMenu.class), ALTAR_TYPE);
+                new AltarTransferHandler(ChestMenu.class, transferHelper), ALTAR_TYPE);
 
         // Backpack mods: their own menu classes need a dedicated registration, otherwise JEI
         // hides the transfer button on those screens.
         if (ModList.get().isLoaded("l2backpack")) {
             for (String className : L2_MENUS) {
-                registerCompatMenu(registration, className);
+                registerCompatMenu(registration, className, transferHelper);
             }
         }
         if (ModList.get().isLoaded("sophisticatedbackpacks")) {
-            registerCompatMenu(registration, SB_BACKPACK_CONTAINER);
+            registerCompatMenu(registration, SB_BACKPACK_CONTAINER, transferHelper);
         }
     }
 
     @SuppressWarnings("unchecked")
-    private static void registerCompatMenu(IRecipeTransferRegistration registration, String className) {
+    private static void registerCompatMenu(IRecipeTransferRegistration registration, String className,
+                                           IRecipeTransferHandlerHelper transferHelper) {
         try {
             // initialize=false: only check that the optional mod's menu class exists.
             Class<?> clazz = Class.forName(className, false, TLMJEIPlugin.class.getClassLoader());
             if (!AbstractContainerMenu.class.isAssignableFrom(clazz)) return;
             registration.addRecipeTransferHandler(
-                    new AltarTransferHandler((Class<? extends AbstractContainerMenu>) clazz),
+                    new AltarTransferHandler((Class<? extends AbstractContainerMenu>) clazz, transferHelper),
                     ALTAR_TYPE);
         } catch (Throwable t) {
             // The mod version may not have this menu class; skip it.
